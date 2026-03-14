@@ -2,13 +2,13 @@ export const APP_NAME = 'Auto-Rig 3D'
 
 export const SUPPORTED_FORMATS = ['.glb', '.gltf', '.fbx', '.obj'] as const
 
-export const DEFAULT_VOXEL_RESOLUTION = 64
+export const DEFAULT_VOXEL_RESOLUTION = 48
 
 export const MAX_BONE_INFLUENCES = 4
 
-export const HEAT_DIFFUSION_ITERATIONS = 40
+export const HEAT_DIFFUSION_ITERATIONS = 80
 
-export const WEIGHT_THRESHOLD = 0.01
+export const WEIGHT_THRESHOLD = 0.005
 
 export const COLORS = {
   accent: '#00d4ff',

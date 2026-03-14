@@ -66,7 +66,7 @@ export function RigPanel() {
       setStatus('Voxelizing mesh...')
       await new Promise((r) => setTimeout(r, 0))
       const boundingBox = new THREE.Box3().setFromObject(model)
-      const voxelGrid = new VoxelGrid(boundingBox, 32)
+      const voxelGrid = new VoxelGrid(boundingBox, 48)
       // Find first mesh and its geometry
       let foundMesh: THREE.Mesh | null = null
       model.traverse((child) => {

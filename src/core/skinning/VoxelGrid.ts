@@ -10,11 +10,14 @@ export class VoxelGrid {
 
   constructor(boundingBox: THREE.Box3, resolution: number = 64) {
     this.resolution = resolution
-    const padding = new THREE.Vector3(0.1, 0.1, 0.1)
+    const size = new THREE.Vector3()
+    boundingBox.getSize(size)
+    // Padding proportional to model size for better coverage
+    const padding = size.clone().multiplyScalar(0.05).clampScalar(0.05, 0.5)
     this.min = boundingBox.min.clone().sub(padding)
     this.max = boundingBox.max.clone().add(padding)
-    const size = this.max.clone().sub(this.min)
-    this.cellSize = size.divideScalar(resolution)
+    const gridSize = this.max.clone().sub(this.min)
+    this.cellSize = gridSize.divideScalar(resolution)
     this.totalVoxels = resolution * resolution * resolution
     this.solid = new Uint8Array(this.totalVoxels)
   }
@@ -39,6 +42,16 @@ export class VoxelGrid {
     ).clamp(
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(this.resolution - 1, this.resolution - 1, this.resolution - 1)
+    )
+  }
+
+  /** Returns fractional voxel coordinates for trilinear interpolation */
+  worldToVoxelFrac(worldPos: THREE.Vector3): THREE.Vector3 {
+    const local = worldPos.clone().sub(this.min)
+    return new THREE.Vector3(
+      local.x / this.cellSize.x - 0.5,
+      local.y / this.cellSize.y - 0.5,
+      local.z / this.cellSize.z - 0.5
     )
   }
 
@@ -74,65 +87,126 @@ export class VoxelGrid {
   }
 
   voxelizeMesh(geometry: THREE.BufferGeometry, worldMatrix: THREE.Matrix4): void {
-    // Bake worldMatrix into geometry so vertices are in world space.
     const tempGeo = geometry.clone()
     tempGeo.applyMatrix4(worldMatrix)
 
-    // Step 1: Mark surface voxels (voxels containing mesh triangles)
-    // This ensures vertices ON the surface are always in solid voxels.
+    // Step 1: Mark surface voxels from triangle vertices
     this.markSurfaceVoxels(tempGeo)
 
-    // Step 2: Fill interior voxels via ray casting
+    // Step 2: Fill interior via ray casting along ALL 3 axes for robust coverage
     const raycaster = new THREE.Raycaster()
-    // Use DoubleSide so raycasting works regardless of face winding
     const tempMesh = new THREE.Mesh(
       tempGeo,
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
     )
 
+    // Cast rays along X axis
     for (let z = 0; z < this.resolution; z++) {
       for (let y = 0; y < this.resolution; y++) {
-        const worldPos = this.voxelToWorld(new THREE.Vector3(0, y, z))
-        raycaster.set(
-          new THREE.Vector3(this.min.x - 1, worldPos.y, worldPos.z),
-          new THREE.Vector3(1, 0, 0)
-        )
+        const wp = this.voxelToWorld(new THREE.Vector3(0, y, z))
+        raycaster.set(new THREE.Vector3(this.min.x - 1, wp.y, wp.z), new THREE.Vector3(1, 0, 0))
+        this.fillFromIntersects(raycaster.intersectObject(tempMesh), 'x', y, z)
+      }
+    }
 
-        const intersects = raycaster.intersectObject(tempMesh)
+    // Cast rays along Y axis
+    for (let z = 0; z < this.resolution; z++) {
+      for (let x = 0; x < this.resolution; x++) {
+        const wp = this.voxelToWorld(new THREE.Vector3(x, 0, z))
+        raycaster.set(new THREE.Vector3(wp.x, this.min.y - 1, wp.z), new THREE.Vector3(0, 1, 0))
+        this.fillFromIntersects(raycaster.intersectObject(tempMesh), 'y', x, z)
+      }
+    }
 
-        let inside = false
-        let prevX = 0
-        for (const hit of intersects) {
-          const vx = Math.floor((hit.point.x - this.min.x) / this.cellSize.x)
-          const clampedVx = Math.max(0, Math.min(this.resolution - 1, vx))
-          if (!inside) {
-            // Entered mesh — mark entry surface voxel
-            this.markSolid(this.index(clampedVx, y, z))
-          } else {
-            // Inside mesh — fill voxels from previous hit to current hit
-            for (let x = Math.max(0, prevX); x < Math.min(this.resolution, vx + 1); x++) {
-              this.solid[this.index(x, y, z)] = 1
-            }
-          }
-          inside = !inside
-          prevX = vx
-        }
+    // Cast rays along Z axis
+    for (let y = 0; y < this.resolution; y++) {
+      for (let x = 0; x < this.resolution; x++) {
+        const wp = this.voxelToWorld(new THREE.Vector3(x, y, 0))
+        raycaster.set(new THREE.Vector3(wp.x, wp.y, this.min.z - 1), new THREE.Vector3(0, 0, 1))
+        this.fillFromIntersects(raycaster.intersectObject(tempMesh), 'z', x, y)
       }
     }
   }
 
-  /** Mark voxels that contain mesh triangle vertices as solid */
+  private fillFromIntersects(
+    intersects: THREE.Intersection[],
+    axis: 'x' | 'y' | 'z',
+    a: number, b: number
+  ): void {
+    let inside = false
+    let prevV = 0
+
+    for (const hit of intersects) {
+      const coord = axis === 'x' ? hit.point.x : axis === 'y' ? hit.point.y : hit.point.z
+      const minCoord = axis === 'x' ? this.min.x : axis === 'y' ? this.min.y : this.min.z
+      const cellSize = axis === 'x' ? this.cellSize.x : axis === 'y' ? this.cellSize.y : this.cellSize.z
+
+      const vv = Math.floor((coord - minCoord) / cellSize)
+      const clampedVv = Math.max(0, Math.min(this.resolution - 1, vv))
+
+      if (!inside) {
+        // Mark entry surface voxel
+        this.markSolidByAxis(axis, clampedVv, a, b)
+      } else {
+        // Fill interior
+        for (let v = Math.max(0, prevV); v < Math.min(this.resolution, vv + 1); v++) {
+          this.markSolidByAxis(axis, v, a, b)
+        }
+      }
+      inside = !inside
+      prevV = vv
+    }
+  }
+
+  private markSolidByAxis(axis: 'x' | 'y' | 'z', v: number, a: number, b: number): void {
+    let x: number, y: number, z: number
+    if (axis === 'x') { x = v; y = a; z = b }
+    else if (axis === 'y') { x = a; y = v; z = b }
+    else { x = a; y = b; z = v }
+    if (x >= 0 && x < this.resolution && y >= 0 && y < this.resolution && z >= 0 && z < this.resolution) {
+      this.solid[this.index(x, y, z)] = 1
+    }
+  }
+
   private markSurfaceVoxels(geometry: THREE.BufferGeometry): void {
     const position = geometry.getAttribute('position')
     if (!position) return
 
-    const v = new THREE.Vector3()
-    for (let i = 0; i < position.count; i++) {
-      v.fromBufferAttribute(position, i)
-      const voxelPos = this.worldToVoxel(v)
-      const idx = this.index(voxelPos.x, voxelPos.y, voxelPos.z)
-      this.markSolid(idx)
+    const index = geometry.getIndex()
+    const v0 = new THREE.Vector3()
+    const v1 = new THREE.Vector3()
+    const v2 = new THREE.Vector3()
+
+    // Mark triangle edges, not just vertices, for better surface coverage
+    const triangleCount = index ? index.count / 3 : position.count / 3
+
+    for (let t = 0; t < triangleCount; t++) {
+      const i0 = index ? index.getX(t * 3) : t * 3
+      const i1 = index ? index.getX(t * 3 + 1) : t * 3 + 1
+      const i2 = index ? index.getX(t * 3 + 2) : t * 3 + 2
+
+      v0.fromBufferAttribute(position, i0)
+      v1.fromBufferAttribute(position, i1)
+      v2.fromBufferAttribute(position, i2)
+
+      // Mark vertices
+      this.markWorldPos(v0)
+      this.markWorldPos(v1)
+      this.markWorldPos(v2)
+
+      // Mark edge midpoints for better coverage on large triangles
+      this.markWorldPos(v0.clone().add(v1).multiplyScalar(0.5))
+      this.markWorldPos(v0.clone().add(v2).multiplyScalar(0.5))
+      this.markWorldPos(v1.clone().add(v2).multiplyScalar(0.5))
+
+      // Mark triangle center
+      this.markWorldPos(v0.clone().add(v1).add(v2).divideScalar(3))
     }
+  }
+
+  private markWorldPos(pos: THREE.Vector3): void {
+    const vp = this.worldToVoxel(pos)
+    this.markSolid(this.index(vp.x, vp.y, vp.z))
   }
 
   getSolidCount(): number {
