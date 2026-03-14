@@ -144,8 +144,7 @@ export async function computeHeatWeights(
         for (let n = 0; n < neighbors.length; n++) {
           sum += src[neighbors[n]]
         }
-        // Blend: keep some of the current value for stability
-        buffer[i] = buffer[i] * 0.3 + (sum / neighbors.length) * 0.7
+        buffer[i] = sum / neighbors.length
       }
 
       // Re-pin all bone seed voxels

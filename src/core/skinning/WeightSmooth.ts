@@ -2,95 +2,144 @@ import * as THREE from 'three'
 import { MAX_BONE_INFLUENCES, WEIGHT_THRESHOLD } from '../../utils/constants'
 import type { SkinWeights } from './HeatDiffusion'
 
+/**
+ * Smooth skin weights using Laplacian smoothing on per-bone weight maps.
+ *
+ * Instead of smoothing the packed (index, weight) pairs directly
+ * (which can flip bone indices between neighbors and cause tearing),
+ * we expand weights into a full [vertex x bone] matrix, smooth each
+ * bone's column independently on the mesh surface, then re-select
+ * the top MAX_BONE_INFLUENCES per vertex.
+ */
 export function smoothWeights(
   skinWeights: SkinWeights,
   geometry: THREE.BufferGeometry,
-  iterations: number = 6
+  iterations: number = 8
 ): SkinWeights {
-  const positions = geometry.getAttribute('position')
-  const vertexCount = positions.count
-  const indices = new Uint16Array(skinWeights.indices)
-  const weights = new Float32Array(skinWeights.weights)
+  const vertexCount = geometry.getAttribute('position').count
 
-  // Build adjacency from geometry index or generate from positions
-  const adjacency = buildAdjacency(geometry)
-
-  // If no adjacency (no index buffer), build from position proximity
+  // Build adjacency
+  let adjacency = buildAdjacency(geometry)
   if (adjacency.size === 0) {
-    buildProximityAdjacency(geometry, adjacency)
+    adjacency = buildProximityAdjacency(geometry)
   }
 
-  for (let iter = 0; iter < iterations; iter++) {
-    const newWeights = new Float32Array(weights)
-    const newIndices = new Uint16Array(indices)
-
-    for (let v = 0; v < vertexCount; v++) {
-      const neighbors = adjacency.get(v)
-      if (!neighbors || neighbors.length === 0) continue
-
-      // Collect all bone influences from this vertex and its neighbors
-      const boneMap = new Map<number, number>()
-      const base = v * MAX_BONE_INFLUENCES
-
-      // Current vertex weights (stronger influence)
-      for (let i = 0; i < MAX_BONE_INFLUENCES; i++) {
-        const boneIdx = indices[base + i]
-        const w = weights[base + i]
-        if (w > 0) {
-          boneMap.set(boneIdx, (boneMap.get(boneIdx) ?? 0) + w * 2)
-        }
-      }
-
-      // Neighbor weights
-      for (const n of neighbors) {
-        const nBase = n * MAX_BONE_INFLUENCES
-        for (let j = 0; j < MAX_BONE_INFLUENCES; j++) {
-          const boneIdx = indices[nBase + j]
-          const w = weights[nBase + j]
-          if (w > 0) {
-            boneMap.set(boneIdx, (boneMap.get(boneIdx) ?? 0) + w)
-          }
-        }
-      }
-
-      // Pick top MAX_BONE_INFLUENCES bones
-      const sorted = Array.from(boneMap.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, MAX_BONE_INFLUENCES)
-
-      // Normalize
-      let total = 0
-      for (const [, w] of sorted) total += w
-      if (total <= 0) continue
-
-      for (let i = 0; i < MAX_BONE_INFLUENCES; i++) {
-        if (i < sorted.length) {
-          newIndices[base + i] = sorted[i][0]
-          newWeights[base + i] = sorted[i][1] / total
-        } else {
-          newIndices[base + i] = 0
-          newWeights[base + i] = 0
-        }
-      }
-    }
-
-    indices.set(newIndices)
-    weights.set(newWeights)
-  }
-
-  // Final: threshold small weights and renormalize
+  // Collect all unique bone indices used
+  const boneSet = new Set<number>()
   for (let v = 0; v < vertexCount; v++) {
     const base = v * MAX_BONE_INFLUENCES
-    let total = 0
     for (let i = 0; i < MAX_BONE_INFLUENCES; i++) {
-      if (weights[base + i] < WEIGHT_THRESHOLD) {
-        weights[base + i] = 0
+      if (skinWeights.weights[base + i] > 0) {
+        boneSet.add(skinWeights.indices[base + i])
       }
-      total += weights[base + i]
     }
+  }
+  const usedBones = Array.from(boneSet).sort((a, b) => a - b)
+  const boneToCol = new Map<number, number>()
+  usedBones.forEach((b, i) => boneToCol.set(b, i))
+  const numBones = usedBones.length
+
+  // Expand into full [vertex x bone] weight matrix
+  const weightMap = new Float32Array(vertexCount * numBones)
+  for (let v = 0; v < vertexCount; v++) {
+    const base = v * MAX_BONE_INFLUENCES
+    for (let i = 0; i < MAX_BONE_INFLUENCES; i++) {
+      const w = skinWeights.weights[base + i]
+      if (w > 0) {
+        const col = boneToCol.get(skinWeights.indices[base + i])!
+        weightMap[v * numBones + col] += w
+      }
+    }
+  }
+
+  // Laplacian smoothing: smooth each bone's weight column independently
+  // This preserves spatial continuity — neighboring vertices will have
+  // similar weights for the same bone, preventing tearing.
+  const buffer = new Float32Array(vertexCount)
+
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let bCol = 0; bCol < numBones; bCol++) {
+      // Extract this bone's column
+      for (let v = 0; v < vertexCount; v++) {
+        buffer[v] = weightMap[v * numBones + bCol]
+      }
+
+      // Laplacian smooth: blend with neighbor average
+      for (let v = 0; v < vertexCount; v++) {
+        const neighbors = adjacency.get(v)
+        if (!neighbors || neighbors.length === 0) continue
+
+        let sum = 0
+        for (const n of neighbors) {
+          sum += weightMap[n * numBones + bCol]
+        }
+        const neighborAvg = sum / neighbors.length
+
+        // 60% self + 40% neighbor average — enough smoothing without losing detail
+        buffer[v] = weightMap[v * numBones + bCol] * 0.6 + neighborAvg * 0.4
+      }
+
+      // Write back
+      for (let v = 0; v < vertexCount; v++) {
+        weightMap[v * numBones + bCol] = buffer[v]
+      }
+    }
+
+    // Normalize weights per vertex after each iteration
+    for (let v = 0; v < vertexCount; v++) {
+      let total = 0
+      for (let bCol = 0; bCol < numBones; bCol++) {
+        total += weightMap[v * numBones + bCol]
+      }
+      if (total > 0) {
+        for (let bCol = 0; bCol < numBones; bCol++) {
+          weightMap[v * numBones + bCol] /= total
+        }
+      }
+    }
+  }
+
+  // Re-pack: select top MAX_BONE_INFLUENCES per vertex
+  const indices = new Uint16Array(vertexCount * MAX_BONE_INFLUENCES)
+  const weights = new Float32Array(vertexCount * MAX_BONE_INFLUENCES)
+
+  // Reusable array for sorting
+  const boneWeightPairs: { bone: number; weight: number }[] = []
+
+  for (let v = 0; v < vertexCount; v++) {
+    boneWeightPairs.length = 0
+
+    for (let bCol = 0; bCol < numBones; bCol++) {
+      const w = weightMap[v * numBones + bCol]
+      if (w > WEIGHT_THRESHOLD) {
+        boneWeightPairs.push({ bone: usedBones[bCol], weight: w })
+      }
+    }
+
+    boneWeightPairs.sort((a, b) => b.weight - a.weight)
+
+    const base = v * MAX_BONE_INFLUENCES
+    let total = 0
+    const count = Math.min(boneWeightPairs.length, MAX_BONE_INFLUENCES)
+    for (let i = 0; i < count; i++) {
+      total += boneWeightPairs[i].weight
+    }
+
     if (total > 0) {
       for (let i = 0; i < MAX_BONE_INFLUENCES; i++) {
-        weights[base + i] /= total
+        if (i < count) {
+          indices[base + i] = boneWeightPairs[i].bone
+          weights[base + i] = boneWeightPairs[i].weight / total
+        } else {
+          indices[base + i] = 0
+          weights[base + i] = 0
+        }
+      }
+    } else {
+      // Keep original weights if smoothing zeroed everything
+      for (let i = 0; i < MAX_BONE_INFLUENCES; i++) {
+        indices[base + i] = skinWeights.indices[v * MAX_BONE_INFLUENCES + i]
+        weights[base + i] = skinWeights.weights[v * MAX_BONE_INFLUENCES + i]
       }
     }
   }
@@ -101,14 +150,12 @@ export function smoothWeights(
 function buildAdjacency(geometry: THREE.BufferGeometry): Map<number, number[]> {
   const adjacency = new Map<number, number[]>()
   const index = geometry.getIndex()
-
   if (!index) return adjacency
 
   for (let i = 0; i < index.count; i += 3) {
     const a = index.getX(i)
     const b = index.getX(i + 1)
     const c = index.getX(i + 2)
-
     addEdge(adjacency, a, b)
     addEdge(adjacency, b, c)
     addEdge(adjacency, c, a)
@@ -117,28 +164,24 @@ function buildAdjacency(geometry: THREE.BufferGeometry): Map<number, number[]> {
   return adjacency
 }
 
-/** Build adjacency from position proximity for non-indexed geometry */
-function buildProximityAdjacency(
-  geometry: THREE.BufferGeometry,
-  adjacency: Map<number, number[]>
-): void {
+function buildProximityAdjacency(geometry: THREE.BufferGeometry): Map<number, number[]> {
+  const adjacency = new Map<number, number[]>()
   const position = geometry.getAttribute('position')
   const count = position.count
-  const threshold = 0.001
+  const threshold = 0.0001
 
-  // For non-indexed geometry, share vertices at same position
   for (let i = 0; i < count; i++) {
     if (!adjacency.has(i)) adjacency.set(i, [])
-    const xi = position.getX(i), yi = position.getY(i), zi = position.getZ(i)
 
-    // Check vertices in same triangle and nearby
+    // Vertices in same triangle
     const triStart = Math.floor(i / 3) * 3
     for (let j = triStart; j < Math.min(triStart + 3, count); j++) {
       if (j !== i) addEdge(adjacency, i, j)
     }
 
-    // Check adjacent triangles (nearby indices)
-    for (let j = Math.max(0, triStart - 3); j < Math.min(count, triStart + 6); j++) {
+    // Shared positions across triangles
+    const xi = position.getX(i), yi = position.getY(i), zi = position.getZ(i)
+    for (let j = Math.max(0, triStart - 6); j < Math.min(count, triStart + 9); j++) {
       if (j === i) continue
       const dx = xi - position.getX(j)
       const dy = yi - position.getY(j)
@@ -148,6 +191,8 @@ function buildProximityAdjacency(
       }
     }
   }
+
+  return adjacency
 }
 
 function addEdge(adj: Map<number, number[]>, a: number, b: number) {
