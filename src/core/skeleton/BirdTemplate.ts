@@ -1,0 +1,65 @@
+import type { SkeletonTemplate } from './SkeletonTemplate'
+
+export const birdTemplate: SkeletonTemplate = {
+  id: 'bird',
+  name: 'Bird',
+  type: 'bird',
+  bones: [
+    { name: 'Root', parent: null, defaultLocalPosition: [0, 0.5, 0], landmarkKey: 'bodyCenter' },
+    { name: 'Spine', parent: 'Root', defaultLocalPosition: [0, 0, -0.1] },
+    { name: 'Chest', parent: 'Spine', defaultLocalPosition: [0, 0.05, -0.1] },
+    { name: 'Neck1', parent: 'Chest', defaultLocalPosition: [0, 0.1, -0.05], landmarkKey: 'neckBase' },
+    { name: 'Neck2', parent: 'Neck1', defaultLocalPosition: [0, 0.08, -0.03] },
+    { name: 'Neck3', parent: 'Neck2', defaultLocalPosition: [0, 0.08, -0.02] },
+    { name: 'Head', parent: 'Neck3', defaultLocalPosition: [0, 0.05, -0.03], landmarkKey: 'head' },
+    { name: 'Beak', parent: 'Head', defaultLocalPosition: [0, -0.01, -0.06] },
+    // Left wing
+    { name: 'LeftWingShoulder', parent: 'Chest', defaultLocalPosition: [0.08, 0.02, 0], landmarkKey: 'leftWingShoulder' },
+    { name: 'LeftUpperWing', parent: 'LeftWingShoulder', defaultLocalPosition: [0.2, 0, 0] },
+    { name: 'LeftLowerWing', parent: 'LeftUpperWing', defaultLocalPosition: [0.18, 0, 0.02], landmarkKey: 'leftWingElbow' },
+    { name: 'LeftWingTip', parent: 'LeftLowerWing', defaultLocalPosition: [0.15, 0, 0.03], landmarkKey: 'leftWingTip' },
+    // Right wing
+    { name: 'RightWingShoulder', parent: 'Chest', defaultLocalPosition: [-0.08, 0.02, 0], landmarkKey: 'rightWingShoulder' },
+    { name: 'RightUpperWing', parent: 'RightWingShoulder', defaultLocalPosition: [-0.2, 0, 0] },
+    { name: 'RightLowerWing', parent: 'RightUpperWing', defaultLocalPosition: [-0.18, 0, 0.02], landmarkKey: 'rightWingElbow' },
+    { name: 'RightWingTip', parent: 'RightLowerWing', defaultLocalPosition: [-0.15, 0, 0.03], landmarkKey: 'rightWingTip' },
+    // Left leg
+    { name: 'LeftHip', parent: 'Root', defaultLocalPosition: [0.06, -0.05, 0.05], landmarkKey: 'leftHip' },
+    { name: 'LeftUpperLeg', parent: 'LeftHip', defaultLocalPosition: [0, -0.12, 0] },
+    { name: 'LeftLowerLeg', parent: 'LeftUpperLeg', defaultLocalPosition: [0, -0.12, 0.02] },
+    { name: 'LeftFoot', parent: 'LeftLowerLeg', defaultLocalPosition: [0, -0.1, 0], landmarkKey: 'leftFoot' },
+    { name: 'LeftToe1', parent: 'LeftFoot', defaultLocalPosition: [0.02, 0, -0.04] },
+    { name: 'LeftToe2', parent: 'LeftFoot', defaultLocalPosition: [0, 0, -0.05] },
+    { name: 'LeftToe3', parent: 'LeftFoot', defaultLocalPosition: [-0.02, 0, -0.04] },
+    // Right leg
+    { name: 'RightHip', parent: 'Root', defaultLocalPosition: [-0.06, -0.05, 0.05], landmarkKey: 'rightHip' },
+    { name: 'RightUpperLeg', parent: 'RightHip', defaultLocalPosition: [0, -0.12, 0] },
+    { name: 'RightLowerLeg', parent: 'RightUpperLeg', defaultLocalPosition: [0, -0.12, 0.02] },
+    { name: 'RightFoot', parent: 'RightLowerLeg', defaultLocalPosition: [0, -0.1, 0], landmarkKey: 'rightFoot' },
+    { name: 'RightToe1', parent: 'RightFoot', defaultLocalPosition: [-0.02, 0, -0.04] },
+    { name: 'RightToe2', parent: 'RightFoot', defaultLocalPosition: [0, 0, -0.05] },
+    { name: 'RightToe3', parent: 'RightFoot', defaultLocalPosition: [0.02, 0, -0.04] },
+    // Tail feathers
+    { name: 'TailBase', parent: 'Root', defaultLocalPosition: [0, 0, 0.12] },
+    { name: 'TailMid', parent: 'TailBase', defaultLocalPosition: [0, 0.02, 0.08] },
+    { name: 'TailTip', parent: 'TailMid', defaultLocalPosition: [0, 0.02, 0.08] },
+  ],
+  requiredLandmarks: [
+    { key: 'head', label: 'Head', description: 'Top of the head', color: '#ff4444' },
+    { key: 'neckBase', label: 'Neck Base', description: 'Base of the neck', color: '#ff8844' },
+    { key: 'bodyCenter', label: 'Body Center', description: 'Center of the body', color: '#ffaa44' },
+    { key: 'leftWingShoulder', label: 'Left Wing Root', description: 'Left wing shoulder', color: '#44ff44' },
+    { key: 'leftWingTip', label: 'Left Wing Tip', description: 'Tip of left wing', color: '#44ff88' },
+    { key: 'rightWingShoulder', label: 'Right Wing Root', description: 'Right wing shoulder', color: '#44ffcc' },
+    { key: 'rightWingTip', label: 'Right Wing Tip', description: 'Tip of right wing', color: '#44ffff' },
+    { key: 'leftFoot', label: 'Left Foot', description: 'Left foot', color: '#4444ff' },
+    { key: 'rightFoot', label: 'Right Foot', description: 'Right foot', color: '#8844ff' },
+  ],
+  optionalLandmarks: [
+    { key: 'leftWingElbow', label: 'Left Wing Elbow', description: 'Left wing mid-joint', color: '#88ff88' },
+    { key: 'rightWingElbow', label: 'Right Wing Elbow', description: 'Right wing mid-joint', color: '#88ff88' },
+    { key: 'leftHip', label: 'Left Hip', description: 'Left hip joint', color: '#8888ff' },
+    { key: 'rightHip', label: 'Right Hip', description: 'Right hip joint', color: '#8888ff' },
+  ],
+  testAnimations: ['rest', 'wingFlap', 'walk', 'bendTest'],
+}
