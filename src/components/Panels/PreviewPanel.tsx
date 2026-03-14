@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { useRigStore } from '../../store/useRigStore'
 import { Button } from '../UI/Button'
@@ -9,9 +9,12 @@ import { testAnimations } from '../../core/preview/TestAnimations'
 export function PreviewPanel() {
   const setStep = useAppStore((s) => s.setStep)
   const selectedTemplate = useRigStore((s) => s.selectedTemplate)
-  const [selectedAnim, setSelectedAnim] = useState('tpose')
-  const [speed, setSpeed] = useState(1)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const selectedAnim = useRigStore((s) => s.previewAnim)
+  const setSelectedAnim = useRigStore((s) => s.setPreviewAnim)
+  const isPlaying = useRigStore((s) => s.previewPlaying)
+  const setIsPlaying = useRigStore((s) => s.setPreviewPlaying)
+  const speed = useRigStore((s) => s.previewSpeed)
+  const setSpeed = useRigStore((s) => s.setPreviewSpeed)
 
   const animOptions = Object.entries(testAnimations)
     .filter(([key]) => {
@@ -28,7 +31,10 @@ export function PreviewPanel() {
         <Select
           value={selectedAnim}
           options={animOptions}
-          onChange={setSelectedAnim}
+          onChange={(val) => {
+            setIsPlaying(false)
+            setSelectedAnim(val)
+          }}
         />
       </div>
 
@@ -51,10 +57,16 @@ export function PreviewPanel() {
       </div>
 
       <div className="panel-section" style={{ display: 'flex', gap: '8px' }}>
-        <Button onClick={() => setStep('rig')}>← Back</Button>
+        <Button onClick={() => {
+          setIsPlaying(false)
+          setStep('rig')
+        }}>← Back</Button>
         <Button
           variant="primary"
-          onClick={() => setStep('export')}
+          onClick={() => {
+            setIsPlaying(false)
+            setStep('export')
+          }}
           style={{ flex: 1 }}
         >
           Next: Export →

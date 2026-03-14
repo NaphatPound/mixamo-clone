@@ -16,6 +16,10 @@ interface RigState {
   skeleton: THREE.Skeleton | null
   skinnedMesh: THREE.SkinnedMesh | null
   isRigGenerated: boolean
+  // Preview state
+  previewAnim: string
+  previewPlaying: boolean
+  previewSpeed: number
   selectTemplate: (type: SkeletonType) => void
   setActiveLandmark: (key: string | null) => void
   setLandmark: (key: string, data: LandmarkData) => void
@@ -24,6 +28,9 @@ interface RigState {
   setSkeleton: (skeleton: THREE.Skeleton) => void
   setSkinnedMesh: (mesh: THREE.SkinnedMesh) => void
   setRigGenerated: (generated: boolean) => void
+  setPreviewAnim: (anim: string) => void
+  setPreviewPlaying: (playing: boolean) => void
+  setPreviewSpeed: (speed: number) => void
   reset: () => void
 }
 
@@ -34,6 +41,9 @@ export const useRigStore = create<RigState>((set) => ({
   skeleton: null,
   skinnedMesh: null,
   isRigGenerated: false,
+  previewAnim: 'tpose',
+  previewPlaying: false,
+  previewSpeed: 1,
   selectTemplate: (selectedTemplate) => set({ selectedTemplate, landmarks: new Map(), activeLandmarkKey: null, skeleton: null, skinnedMesh: null, isRigGenerated: false }),
   setActiveLandmark: (activeLandmarkKey) => set({ activeLandmarkKey }),
   setLandmark: (key, data) => set((state) => {
@@ -50,5 +60,8 @@ export const useRigStore = create<RigState>((set) => ({
   setSkeleton: (skeleton) => set({ skeleton }),
   setSkinnedMesh: (skinnedMesh) => set({ skinnedMesh }),
   setRigGenerated: (isRigGenerated) => set({ isRigGenerated }),
-  reset: () => set({ selectedTemplate: null, landmarks: new Map(), activeLandmarkKey: null, skeleton: null, skinnedMesh: null, isRigGenerated: false }),
+  setPreviewAnim: (previewAnim) => set({ previewAnim }),
+  setPreviewPlaying: (previewPlaying) => set({ previewPlaying }),
+  setPreviewSpeed: (previewSpeed) => set({ previewSpeed }),
+  reset: () => set({ selectedTemplate: null, landmarks: new Map(), activeLandmarkKey: null, skeleton: null, skinnedMesh: null, isRigGenerated: false, previewAnim: 'tpose', previewPlaying: false, previewSpeed: 1 }),
 }))

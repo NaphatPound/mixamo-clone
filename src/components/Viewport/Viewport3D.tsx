@@ -5,6 +5,7 @@ import { GridFloor } from './GridFloor'
 import { SceneControls } from './SceneControls'
 import { SkeletonOverlay } from './SkeletonOverlay'
 import { LandmarkMarkers } from './LandmarkMarkers'
+import { AnimationController } from './AnimationController'
 
 export function Viewport3D() {
   return (
@@ -22,6 +23,7 @@ export function Viewport3D() {
           <ModelViewer />
           <LandmarkMarkers />
           <SkeletonOverlay />
+          <AnimationController />
           <SceneControls />
         </Suspense>
       </Canvas>
